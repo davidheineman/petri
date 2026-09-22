@@ -21,14 +21,15 @@ git clone git@github.com:davidheineman/petri.git
 # append to ~/.bashrc
 cat <<'EOF' >> ~/.bashrc
 
-source ~/fairdev/.bashrc
+source ~/petri/.bashrc
 EOF
 
 # run devtools setup
+chmod +x ./setup_devtools.sh
 ./setup_devtools.sh
 
-# install fb vscode extensions
-xargs -I {} cursor-server --install-extension {} < code_extensions.txt
+# install cursor extensions
+xargs -I {} cursor --install-extension {} < code_extensions.txt
 
 # pull my personal claude rules
 mkdir -p ~/.claude/skills/david

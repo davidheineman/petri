@@ -1,6 +1,8 @@
 ##########################################################################################
-# Based on: https://github.com/davidheineman/beaker_image/blob/main/Dockerfile
-
+# Based on: 
+#   https://github.com/davidheineman/beaker_image/blob/main/Dockerfile
+#   https://github.com/davidheineman/fairdev/blob/main/setup_devtools.sh
+# 
 # missing tools from Ai2:
     # ffmpeg, protobuf-compiler, libsentencepiece-dev, libsqlite3-dev, libssl-dev, iproute2, net-tools, iputils-ping, software-properties-common, openssh-server, weka, psmisc, rename
     # cowsay, figlet, lolcat, neofetch
@@ -11,50 +13,28 @@
 
 set -euo pipefail
 
-DEVTOOLS_ENV="${DEVTOOLS_ENV:-devtools}"
+export PIXI_HOME="${PIXI_HOME:-$HOME/.pixi}"
 LOCAL_BIN="$HOME/.local/bin"
 
-# Tools we refuse to shadow (system versions take precedence)
-SHADOW_DENY=(
-    conda
-    curl
-    g++
-    gcc
-    git
-    gzip
-    ld
-    make
-    mamba
-    node
-    npm
-    npx
-    pip
-    pip3
-    pytest
-    python
-    python3
-    tar
-    unzip
-    wget
-)
+# If $HOME is on a small NFS quota, point the package cache at scratch instead:
+#   export PIXI_CACHE_DIR=/scratch/$USER/pixi-cache
+export PATH="$PIXI_HOME/bin:$LOCAL_BIN:$HOME/.cargo/bin:$PATH"
 
 log() { printf '\033[1;36m[devtools]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[devtools]\033[0m %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# ---------------------------------------------------------------------------
-# 1. conda env with the bulk of the tools
-# ---------------------------------------------------------------------------
-if ! have conda; then
-    warn "conda not found on PATH; aborting (this host should have /opt/conda)."
-    exit 1
+# -------------
+# pixi
+# -------------
+if ! have pixi; then
+    log "Installing pixi into $PIXI_HOME"
+    curl -fsSL https://pixi.sh/install.sh | sh
+else
+    log "pixi already installed: $(command -v pixi)"
 fi
 
-# Load conda's shell functions so `conda activate` works inside this script.
-# shellcheck disable=SC1091
-source "$(conda info --base)/etc/profile.d/conda.sh"
-
-CONDA_PKGS=(
+PIXI_PKGS=(
     bat
     btop
     cmake
@@ -83,27 +63,29 @@ CONDA_PKGS=(
     smem
     socat
     starship
-    # tmux # only system tmux works
     tokei
     tree
+    uv
     zoxide
     zstd
 )
 
-if ! conda env list | awk '{print $1}' | grep -qx "$DEVTOOLS_ENV"; then
-    log "Creating conda env: $DEVTOOLS_ENV"
-    conda create -y -n "$DEVTOOLS_ENV" --no-default-packages -c conda-forge --override-channels "${CONDA_PKGS[@]}"
-else
-    log "Updating conda env: $DEVTOOLS_ENV"
-    conda install -y -n "$DEVTOOLS_ENV" -c conda-forge --override-channels "${CONDA_PKGS[@]}"
+log "Installing ${#PIXI_PKGS[@]} tools via pixi global"
+if ! pixi global install --channel conda-forge "${PIXI_PKGS[@]}"; then
+    # one unsolvable package fails the whole batch, so retry individually.
+    warn "Batch install failed; retrying one package at a time"
+    for pkg in "${PIXI_PKGS[@]}"; do
+        pixi global install --channel conda-forge "$pkg" || warn "pixi global install $pkg failed"
+    done
 fi
 
-DEVTOOLS_PREFIX="$(conda env list | awk -v n="$DEVTOOLS_ENV" '$1==n {print $NF}')"
-log "devtools env prefix: $DEVTOOLS_PREFIX"
+# The resulting manifest is the portable record of this tool set. Copy it to a
+# new cluster and `pixi global sync` reproduces everything above:
+log "Manifest: $PIXI_HOME/manifests/pixi-global.toml"
 
-# ---------------------------------------------------------------------------
-# 2. rustup → cargo/rustc into ~/.cargo
-# ---------------------------------------------------------------------------
+# -------------
+# rustup -> ~/.cargo
+# -------------
 if ! have cargo; then
     log "Installing rustup (cargo, rustc)"
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
@@ -119,9 +101,9 @@ for b in cargo rustc rustup rustdoc; do
     [ -x "$HOME/.cargo/bin/$b" ] && ln -sfn "$HOME/.cargo/bin/$b" "$LOCAL_BIN/$b"
 done
 
-# ---------------------------------------------------------------------------
-# 3. uv-installed Python CLIs (uv is already in ~/.local/bin)
-# ---------------------------------------------------------------------------
+# -------------
+# uv
+# -------------
 if have uv; then
     log "Installing Python CLIs via uv tool"
     # Re-installing is a no-op when up to date.
@@ -132,35 +114,13 @@ else
     warn "uv not found; skipping Python CLIs"
 fi
 
-# ---------------------------------------------------------------------------
-# 4. Symlink farm: expose devtools env binaries through ~/.local/bin
-#    (~/.local/bin is already on PATH ahead of /usr/bin and /opt/conda/bin)
-# ---------------------------------------------------------------------------
-log "Linking devtools binaries → $LOCAL_BIN"
-shadow_set=" ${SHADOW_DENY[*]} "
-linked=0
-skipped=0
-for src in "$DEVTOOLS_PREFIX/bin/"*; do
-    name="$(basename "$src")"
-    # Skip anything in the deny-list, and skip non-binaries (python entry points etc.)
-    if [[ "$shadow_set" == *" $name "* ]]; then
-        skipped=$((skipped+1))
-        continue
-    fi
-    # Only link real executables, not directories
-    [ -x "$src" ] && [ ! -d "$src" ] || continue
-    ln -sfn "$src" "$LOCAL_BIN/$name"
-    linked=$((linked+1))
-done
-log "Linked $linked binaries (skipped $skipped to avoid shadowing core tools)."
-
-# ---------------------------------------------------------------------------
-# 5. Summary
-# ---------------------------------------------------------------------------
+# -------------
+# summary
+# -------------
 log "Done. New tools available in this shell after: hash -r"
 log "Quick check:"
 hash -r 2>/dev/null || true
-for c in "${CONDA_PKGS[@]}"; do
+for c in "${PIXI_PKGS[@]}"; do
     case "$c" in
         ripgrep) c=rg ;;
         fd-find) c=fd ;;
@@ -171,10 +131,3 @@ for c in "${CONDA_PKGS[@]}"; do
         printf '  \033[1;31m✗\033[0m %-10s missing\n' "$c"
     fi
 done
-
-# ---------------------------------------------------------------------------
-# 6. Additional config options
-# ---------------------------------------------------------------------------
-
-# use libmamba for conda package resolution
-conda config --set solver libmamba
