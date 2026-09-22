@@ -2,12 +2,7 @@
 
 Tooling for Stanford SC.
 
-<!-- - `.bashrc` - My tooling
-- `slurm/` - Slurm tooling (all claude slop)
-
-The `slurm/` tooling gives tools like `tt`, `ttt`, `sp`! E.g.
-
-<p align="center">
+<!-- <p align="center">
 <img width="600" src="https://github.com/user-attachments/assets/cb74696b-ffb4-4118-9a89-9e68b9c15fe4" />
 </p> -->
 
@@ -72,6 +67,21 @@ xargs -I {} cursor --install-extension {} < code_extensions.txt
 # pull my personal claude rules
 mkdir -p ~/.claude/skills/david
 curl -L https://raw.githubusercontent.com/davidheineman/dotfiles/refs/heads/main/.cursor/rules.mdc -o ~/.claude/skills/david/SKILL.md
+```
+
+### slurm tooling
+
+```sh
+smiso # miso queue
+nlp # all nlp qeueues
+sp # job priority
+si # attach to job
+
+# other queues
+sjag
+ssphinx
+sjohn
+slo
 ```
 
 ### shortcuts

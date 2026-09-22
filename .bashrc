@@ -109,76 +109,71 @@ gitlogin() {
 # fi
 
 # devtools: binaries
-export PATH="/afs/cs.stanford.edu/u/dhei/.pixi/bin:$PATH"
+export PATH="$HOME/.pixi/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 
 # Copy ~/petri/.gitconfig -> ~/.gitconfig if not exist
 [ -e ~/.gitconfig ] || cp ~/petri/.gitconfig ~/.gitconfig
 
-#########################
-# leftover meta tooling #
-#########################
+#################
+# slurm tooling #
+#################
+SLURM_TOOLS="$HOME/petri/slurm"
 
-# alias cpus='srun --partition=transformer2 --gres=gpu:0 --cpus-per-task=4 --qos h200_dev --pty bash'
+alias nlp="python3 $SLURM_TOOLS/summary.py"
+alias nlpfast="python3 $SLURM_TOOLS/summary.py --fast"
+alias nlpg="python3 $SLURM_TOOLS/summary.py --gpu-only"
+alias nlpw="watch -n 10 -c python3 $SLURM_TOOLS/summary.py --gpu-only"
 
-# # interactive session (exits when session is done)
-# alias sesh='\
-# srun --account transformer2 \
-#      --qos h200_transformer2_high \
-#      --exclusive \
-#      --mem 0 \
-#      --gpus-per-node 8 \
-#      --time 10:00:00 \
-#      --pty \
-#      $SHELL
-# ' # h200_transformer2_high, h200_dev (h200_dev has a 1 day, 16 GPU max; h200_transformer2_high has no max. Both are top priority)
-# sesha() { # attach to interactive session
-#     sattach $*.0
+# per-pool views
+alias sjag="python3 $SLURM_TOOLS/summary.py -p jag-urgent,jag-important,jag-hi,jag-standard,jag-lo"
+alias smiso="python3 $SLURM_TOOLS/summary.py -p miso,miso-lo,miso-interactive"
+alias ssphinx="python3 $SLURM_TOOLS/summary.py -p sphinx,sphinx-lo"
+alias sjohn="python3 $SLURM_TOOLS/summary.py -p john,john-lo"
+alias slo="python3 $SLURM_TOOLS/summary.py -p sc-loprio,sc-freegpu,sc-freecpu"
+
+# priority queue
+alias sp="python3 $SLURM_TOOLS/priority.py"
+alias spa="python3 $SLURM_TOOLS/priority.py --all"
+
+##################################
+# slurm tooling (not ported yet) #
+##################################
+# # Defaults for the interactive helpers below. Override per-shell, e.g.
+# #   SC_PART=miso-interactive SC_GPUS=2 sesh
+# : "${SC_ACCOUNT:=nlp}"
+# : "${SC_PART:=jag-standard}"
+# : "${SC_GPUS:=1}"
+# : "${SC_TIME:=8:00:00}"
+
+# sesh() { # interactive shell on a compute node (dies with the session)
+#     srun --account "$SC_ACCOUNT" --partition "$SC_PART" \
+#          --gres "gpu:$SC_GPUS" --time "$SC_TIME" --pty "$SHELL"
 # }
-
-# # reserve gpus (devbox) -> srun --pty bash
-# alias gpus='\
-# salloc \
-#   --account transformer2 \
-#   --qos h200_dev \
-#   --exclusive \
-#   --mem 0 \
-#   --gpus-per-node 8 \
-#   --time 10:00:00
-# '
-# sa() { # <- attach to devbox (--overlap will make a new sesh)
-#      srun --jobid=$* --mem=0 --overlap --pty $SHELL
+# gpus() { # reserve a devbox that outlives the shell; attach with `sa <jobid>`
+#     salloc --account "$SC_ACCOUNT" --partition "$SC_PART" \
+#            --gres "gpu:$SC_GPUS" --time "$SC_TIME"
 # }
-
-# si() { # <- attach to the running "interact*" job with the most GPUs
+# devbox() { # long-lived cpu box named for `si` to find (7d on the preemptible pool)
+#     sbatch --account "$SC_ACCOUNT" --partition sc-loprio \
+#            --job-name "👋-$USER-interact-👋" --time 7-00:00:00 \
+#            --wrap "sleep infinity"
+# }
+# sa() { # attach to a running job (--overlap gives you a second shell in it)
+#     srun --jobid="$1" --mem=0 --overlap --pty "$SHELL"
+# }
+# si() { # attach to your "*interact*" job with the most GPUs
 #     local jobid
-#     jobid=$(python ~/fairdev/slurm/interactive.py) || return $?
+#     jobid=$(python3 "$SLURM_TOOLS/interactive.py") || return $?
 #     sa "$jobid"
 # }
-
-# sfollow() { # (works with fair-tbd train jobs; anything else?)
-#   local jobid=$1
-#   local stdout
-#   stdout=$(scontrol show job "$jobid" 2>/dev/null | awk -F= '/StdOut=/{print $2; exit}')
-#   [ -z "$stdout" ] && { echo "no job $jobid"; return 1; }
-#   local dir=$(dirname "$stdout")
-#   # prefer per-rank rank-0 files if they exist (xlformers/stool layout), else fall back to StdOut/StdErr
-#   local rank0=( "$dir/${jobid}_0".{out,err} )
-#   if [ -f "${rank0[0]}" ]; then
-#     tail -F "${rank0[@]}"
-#   else
-#     tail -F "$dir/${jobid}".{stdout,stderr}
-#   fi
+# sesha() { # attach to the first step of a job
+#     sattach "$1.0"
 # }
-
-# # Show cluster usage
-# alias tt="python ~/fairdev/slurm/summary.py --qos h200_transformer2_high --fast" # tt stands for "transformer2"
-# alias ttt="python ~/fairdev/slurm/summary.py --qos h200_transformer2_high" # tt stands for "transformer2"
-# alias comm="python ~/fairdev/slurm/summary.py --qos h200_comm_shared" # comm stands for "h200_comm_shared"
-# alias lowest="python ~/fairdev/slurm/summary.py --qos h200_lowest" # lowest stands for "h200_lowest"
-# alias ttall="python ~/fairdev/slurm/summary.py" # all QoSes
-# alias ttw="watch -n 10 python ~/fairdev/slurm/summary.py"
-
-# alias sp="python ~/fairdev/slurm/priority.py" # "slurm priority"
-
-# alias store="python ~/fairdev/storage/monitor.py" # disk usage
+# sfollow() { # tail a job's stdout/stderr
+#     local jobid=$1 stdout stderr
+#     stdout=$(scontrol show job "$jobid" 2>/dev/null | awk -F= '/StdOut=/{print $2; exit}')
+#     stderr=$(scontrol show job "$jobid" 2>/dev/null | awk -F= '/StdErr=/{print $2; exit}')
+#     [ -z "$stdout" ] && { echo "no job $jobid"; return 1; }
+#     tail -F "$stdout" ${stderr:+"$stderr"}
+# }
