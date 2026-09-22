@@ -3,7 +3,6 @@
 Tooling for Stanford SC.
 
 <!-- - `.bashrc` - My tooling
-- `.defaultrc` - FAIR's pre-installed `.bashrc`
 - `slurm/` - Slurm tooling (all claude slop)
 
 The `slurm/` tooling gives tools like `tt`, `ttt`, `sp`! E.g.
@@ -11,6 +10,45 @@ The `slurm/` tooling gives tools like `tt`, `ttt`, `sp`! E.g.
 <p align="center">
 <img width="600" src="https://github.com/user-attachments/assets/cb74696b-ffb4-4118-9a89-9e68b9c15fe4" />
 </p> -->
+
+### getting into cluster
+
+```sh
+# first-time login use kinit
+# https://support.cs.stanford.edu/hc/en-us/articles/360000042706-Setting-up-password-less-SSH-from-your-Mac-to-CS-systems
+export KRB_PASSWORD='YOUR_CSID_PASSWORD'
+SSHPASS="$KRB_PASSWORD" sshpass -e ssh dhei@sc.stanford.edu
+
+# (on remote) add your SSH pubkey
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+nano ~/.ssh/authorized_keys
+# (paste in your pubkey)
+chmod 600 ~/.ssh/authorized_keys
+
+# (on remote) launch cpu session (7 day timeout)
+sbatch --account=nlp --partition=sc-loprio --job-name="👋-dhei-interact-👋" --wrap="sleep infinity"
+```
+
+Then update local `~/.ssh/config` with hostnames (e.g. for `iliad1`):
+
+```sh
+Host sc
+    HostName sc.stanford.edu
+    User dhei
+    IdentityFile ~/.ssh/id_rsa
+    IdentitiesOnly yes
+    AddKeysToAgent yes
+    UseKeychain yes
+
+Host interact
+    HostName iliad1.stanford.edu
+    User dhei
+    IdentityFile ~/.ssh/id_rsa
+    IdentitiesOnly yes
+    AddKeysToAgent yes
+    UseKeychain yes
+```
 
 ### quick start
 
