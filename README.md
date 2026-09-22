@@ -72,16 +72,16 @@ curl -L https://raw.githubusercontent.com/davidheineman/dotfiles/refs/heads/main
 ### slurm tooling
 
 ```sh
-smiso # miso queue
+smiso # miso queue (40 × h200)
 nlp # all nlp qeueues
 sp # job priority
 si # attach to job
 
 # other queues
-sjag
-ssphinx
-sjohn
-slo
+sjag # 104 (a6000, rtx6000ada, 3090, a5000, titanrtx, titanv)
+ssphinx # 86 (a100, a6000)
+sjohn # 0 (cpu only)
+slo # (623 preemptible queue)
 ```
 
 ### shortcuts
