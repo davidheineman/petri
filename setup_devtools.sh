@@ -5,7 +5,6 @@
 # 
 # missing tools from Ai2:
     # ffmpeg, protobuf-compiler, libsentencepiece-dev, libsqlite3-dev, libssl-dev, iproute2, net-tools, iputils-ping, software-properties-common, openssh-server, weka, psmisc, rename
-    # cowsay, figlet, lolcat, neofetch
     # CUDA tooling
     # Docker tooling
     # AWS / GCP tooling
@@ -15,9 +14,6 @@ set -euo pipefail
 
 export PIXI_HOME="${PIXI_HOME:-$HOME/.pixi}"
 LOCAL_BIN="$HOME/.local/bin"
-
-# If $HOME is on a small NFS quota, point the package cache at scratch instead:
-#   export PIXI_CACHE_DIR=/scratch/$USER/pixi-cache
 export PATH="$PIXI_HOME/bin:$LOCAL_BIN:$HOME/.cargo/bin:$PATH"
 
 log() { printf '\033[1;36m[devtools]\033[0m %s\n' "$*"; }
@@ -70,14 +66,33 @@ PIXI_PKGS=(
     zstd
 )
 
+# conda-forge packages neither of these, so they resolve from dnachun (the
+# personal channel of a conda-forge core maintainer). conda-forge stays first
+# in the channel order, so it still supplies the perl and ruby interpreters;
+# only these two and lolcat's rb-* gems come from dnachun.
+PIXI_EXTRA_PKGS=(
+    lolcat
+    neofetch # archived upstream at 7.1.0; conda-forge's fastfetch is the successor
+)
+
+install_pixi_pkgs() { # <channel args...> -- <packages...>
+    local channels=() pkg
+    while [ $# -gt 0 ] && [ "$1" != "--" ]; do channels+=("$1"); shift; done
+    shift
+    if ! pixi global install "${channels[@]}" "$@"; then
+        # one unsolvable package fails the whole batch, so retry individually.
+        warn "Batch install failed; retrying one package at a time"
+        for pkg in "$@"; do
+            pixi global install "${channels[@]}" "$pkg" || warn "pixi global install $pkg failed"
+        done
+    fi
+}
+
 log "Installing ${#PIXI_PKGS[@]} tools via pixi global"
-if ! pixi global install --channel conda-forge "${PIXI_PKGS[@]}"; then
-    # one unsolvable package fails the whole batch, so retry individually.
-    warn "Batch install failed; retrying one package at a time"
-    for pkg in "${PIXI_PKGS[@]}"; do
-        pixi global install --channel conda-forge "$pkg" || warn "pixi global install $pkg failed"
-    done
-fi
+install_pixi_pkgs --channel conda-forge -- "${PIXI_PKGS[@]}"
+
+log "Installing ${#PIXI_EXTRA_PKGS[@]} extras via pixi global"
+install_pixi_pkgs --channel conda-forge --channel dnachun -- "${PIXI_EXTRA_PKGS[@]}"
 
 # The resulting manifest is the portable record of this tool set. Copy it to a
 # new cluster and `pixi global sync` reproduces everything above:
@@ -115,12 +130,18 @@ else
 fi
 
 # -------------
+# vibecoding
+# -------------
+curl -fsSL https://claude.ai/install.sh | bash
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+
+# -------------
 # summary
 # -------------
 log "Done. New tools available in this shell after: hash -r"
 log "Quick check:"
 hash -r 2>/dev/null || true
-for c in "${PIXI_PKGS[@]}"; do
+for c in "${PIXI_PKGS[@]}" "${PIXI_EXTRA_PKGS[@]}"; do
     case "$c" in
         ripgrep) c=rg ;;
         fd-find) c=fd ;;

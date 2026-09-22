@@ -1,15 +1,13 @@
-alias cpus='srun --partition=transformer2 --gres=gpu:0 --cpus-per-task=4 --qos h200_dev --pty bash'
-
 # (%.XXj controls name size)
 alias sq='squeue --user dhei --format="%.18i %.12P %.20j %.8u %.8T %.10M %.6D %R"'
 alias sc='scancel'
 alias scall='scancel -u dhei'
-alias saccts='sacctmgr show qos format=name%30,GrpTRES%50,priority' # check all accounts on the cluster
+alias saccts='sacctmgr show qos format=name%30,GrpTRES%20,priority' # check all accounts on the cluster
 
 alias sqw='watch -n 1 squeue -u dhei'
 
 # check usage in our accounts
-alias susage='squeue --Format=JobID,UserName,Account,QOS,NumNodes,tres-per-job:.30,tres-per-node:.50,Reason:.30 --qos h200_agentic-models_high,h200_compact-models_high'
+alias susage='squeue --Format=JobID,UserName,Account,QOS,NumNodes,tres-per-job:.30,tres-per-node:.50,Reason:.30 --qos miso,miso-lo,miso-interactive'
 
 # show stats
 alias ss='sstat -j' # <job-id>
@@ -99,16 +97,16 @@ gitlogin() {
     ssh -T git@github.com
 }
 
-# Welcome command! (only runs if `figlet` / `lolcat` / `nvidia-smi` are working)
-if [[ $- == *i* ]]; then
-    if command -v figlet &> /dev/null && command -v lolcat &> /dev/null; then
-        figlet "stanford" | lolcat
-    fi
-    if command -v nvidia-smi &> /dev/null && command -v lolcat &> /dev/null; then
-        nvidia-smi --query-gpu=name,utilization.gpu,memory.total,memory.free,memory.used --format=csv,noheader,nounits | \
-        awk -F, '{print "" $1 " | id ="$2", mem ="$3 " MB, free ="$4 " MB, used ="$5 " MB"}' | lolcat
-    fi
-fi
+# # Welcome command!
+# if [[ $- == *i* ]]; then
+#     if command -v figlet &> /dev/null && command -v lolcat &> /dev/null; then
+#         figlet "stanford" | lolcat
+#     fi
+#     if command -v nvidia-smi &> /dev/null && command -v lolcat &> /dev/null; then
+#         nvidia-smi --query-gpu=name,utilization.gpu,memory.total,memory.free,memory.used --format=csv,noheader,nounits | \
+#         awk -F, '{print "" $1 " | id ="$2", mem ="$3 " MB, free ="$4 " MB, used ="$5 " MB"}' | lolcat
+#     fi
+# fi
 
 # devtools: binaries
 export PATH="/afs/cs.stanford.edu/u/dhei/.pixi/bin:$PATH"
@@ -120,6 +118,8 @@ export PATH="$HOME/.local/bin:$PATH"
 #########################
 # leftover meta tooling #
 #########################
+
+# alias cpus='srun --partition=transformer2 --gres=gpu:0 --cpus-per-task=4 --qos h200_dev --pty bash'
 
 # # interactive session (exits when session is done)
 # alias sesh='\
