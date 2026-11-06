@@ -75,8 +75,18 @@ chmod +x ./setup_devtools.sh
 
 # install cursor extensions
 xargs -I {} cursor --install-extension {} < code_extensions.txt
+```
 
-# pull my personal claude rules
+### claude skills
+
+```sh
+# write agent rules to codex and claude
+mkdir -p ~/.codex ~/.claude && \
+curl -fsSL https://raw.githubusercontent.com/davidheineman/dotfiles/main/.cursor/rules.mdc \
+  | tail -n +4 \
+  | tee ~/.codex/AGENTS.md > ~/.claude/CLAUDE.md
+
+# (alternative setup) write rule to a "david" skill
 mkdir -p ~/.claude/skills/david
 curl -L https://raw.githubusercontent.com/davidheineman/dotfiles/refs/heads/main/.cursor/rules.mdc -o ~/.claude/skills/david/SKILL.md
 ```
@@ -96,7 +106,7 @@ sjohn # 0 (cpu only)
 slo # (623 preemptible queue)
 ```
 
-### shortcuts
+### cursor shortcuts
 
 ```sh
 # overridden vscode shortcuts (you can see with @source:user)
@@ -109,14 +119,4 @@ Toggle Word Wrap -> CTRL + Z
 Show Prev Window Tab -> CTRL + CMD + LEFT
 Show Next Window Tab -> CTRL + CMD + RIGHT
 Trim Trailing Whitespace -> ALT + V
-```
-
-### claude / codex / cursor prompt
-
-```sh
-# write agent rules to codex and claude
-mkdir -p ~/.codex ~/.claude && \
-curl -fsSL https://raw.githubusercontent.com/davidheineman/dotfiles/main/.cursor/rules.mdc \
-  | tail -n +4 \
-  | tee ~/.codex/AGENTS.md > ~/.claude/CLAUDE.md
 ```
