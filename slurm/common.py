@@ -342,7 +342,12 @@ def partition_usage(nodes):
     for a in agg.values():
         a["by_type_total"] = dict(a["by_type_total"])
         a["by_type_idle"] = dict(a["by_type_idle"])
-        a["pct"] = 100 * a["used"] // a["total"] if a["total"] else 0
+        # Drained/down GPUs are not schedulable, so they belong in neither the
+        # utilisation denominator nor the headline total -- counting them makes
+        # 'used + idle' fail to add up to 'total' and understates how full the
+        # partition really is.
+        a["up_total"] = max(a["total"] - a["down"], 0)
+        a["pct"] = 100 * a["used"] // a["up_total"] if a["up_total"] else 0
     return dict(agg)
 
 
@@ -357,6 +362,34 @@ _JOB_FIELDS = (
     "TimeLimit", "TimeLeft", "EndTime", "Reason", "Name",
 )
 _JOB_FMT = ",".join(f"{f}:.0|" for f in _JOB_FIELDS)
+_ARRAY_JOB_ID = re.compile(r"^(\d+)_\[([\d,:-]+)(?:%\d+)?\]$")
+_ARRAY_TASK_RANGE = re.compile(r"^(\d+)-(\d+)(?::(\d+))?$")
+
+
+def expand_array_job_id(jobid):
+    """Expand an squeue array range into task IDs; leave unknown forms intact.
+
+    Pending array tasks with identical details are compressed into one squeue
+    row, but its TRES describes one task rather than the entire range.
+    """
+    match = _ARRAY_JOB_ID.fullmatch(jobid)
+    if not match:
+        return [jobid]
+    base, spec = match.groups()
+    tasks = []
+    for part in spec.split(","):
+        if part.isdigit():
+            tasks.append(f"{base}_{part}")
+            continue
+        task_range = _ARRAY_TASK_RANGE.fullmatch(part)
+        if not task_range:
+            return [jobid]
+        start, end, step = task_range.groups()
+        start, end, step = int(start), int(end), int(step or 1)
+        if step < 1 or end < start:
+            return [jobid]
+        tasks.extend(f"{base}_{task}" for task in range(start, end + 1, step))
+    return tasks
 
 
 def fetch_jobs(partitions=None, states=None, user=None):
@@ -389,7 +422,7 @@ def fetch_jobs(partitions=None, states=None, user=None):
         # A pending job can name several partitions ('iliad,iliad-lo,sc-loprio');
         # it competes in each, so keep the full list and use the first as primary.
         part_list = [x.rstrip("*") for x in part.strip().split(",") if x]
-        jobs.append({
+        job = {
             "jobid": jobid.strip(), "priority": prio_i,
             "partition": part_list[0] if part_list else "",
             "partitions": part_list, "user": user_.strip(),
@@ -399,7 +432,9 @@ def fetch_jobs(partitions=None, states=None, user=None):
             "timelimit": timelimit.strip(), "timeleft": timeleft.strip(),
             "endtime": endtime.strip(),
             "reason": reason.strip().strip("()"), "name": name.strip(),
-        })
+        }
+        for task_id in expand_array_job_id(job["jobid"]):
+            jobs.append({**job, "jobid": task_id})
     return jobs
 
 

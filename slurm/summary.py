@@ -80,8 +80,12 @@ def render_partitions(names, parts, usage, accounts, pnodes):
             preempt_cell = f"[red]{mode}[/red]"
             exposure[name] = threats
         if total:
-            used, idle, tot = (f"[{color}]{u['used']:,}[/{color}]",
-                               f"[green]{u['idle']:,}[/green]", f"{total:,}")
+            down = u.get("down", 0)
+            tot = f"{u.get('up_total', total):,}"
+            if down:
+                tot += f" [red]-{down}[/red]"
+            used, idle = (f"[{color}]{u['used']:,}[/{color}]",
+                          f"[green]{u['idle']:,}[/green]")
             models = common.fmt_gpu_types(u.get("by_type_idle"), limit=4)
             bar_pct = pct
         else:
@@ -264,25 +268,13 @@ def _runtime_seconds(s):
 
 
 def render_jobs(users, me, title, gpu_capacity, limit):
-    t = Table(box=box.SIMPLE, show_header=True, header_style="bold dim",
-              padding=(0, 1), expand=True)
-    t.add_column("User", min_width=12)
-    t.add_column("Running", justify="right", min_width=7)
-    t.add_column("R-GPUs", justify="right", min_width=6)
-    t.add_column("GPU models", style="dim", min_width=22, overflow="ellipsis",
-                 no_wrap=True)
-    t.add_column("Longest job", justify="right", min_width=11)
-    t.add_column("Pending", justify="right", min_width=7)
-    t.add_column("P-GPUs", justify="right", min_width=6)
-    t.add_column("Blocked by", style="dim", max_width=34, overflow="ellipsis",
-                 no_wrap=True)
-
     ranked = sorted(users.items(), key=lambda kv: (-kv[1]["run_gpus"],
                                                    -kv[1]["pend_gpus"]))
     visible = ranked[:limit]
     if me in users and me not in {u for u, _ in visible}:
         visible.append((me, users[me]))
 
+    rows = []
     for user, v in visible:
         is_me = user == me
         name = Text(user)
@@ -295,35 +287,106 @@ def render_jobs(users, me, title, gpu_capacity, limit):
             for r, n in sorted(v["pend_reasons"].items(), key=lambda x: -x[1])
         ) or "—"
         c = "yellow" if is_me else "default"
-        t.add_row(
-            name,
-            f"[{c}]{v['run_jobs']}[/{c}]",
-            f"[{c}]{v['run_gpus']:,}[/{c}]",
-            common.fmt_gpu_types(v["gpu_types"], limit=3),
-            f"[dim]{longest}[/dim]",
-            str(v["pend_jobs"]) if v["pend_jobs"] else "[dim]—[/dim]",
-            f"{v['pend_gpus']:,}" if v["pend_gpus"] else "[dim]—[/dim]",
-            reasons,
-        )
+        rows.append({
+            "User": name,
+            "Running": f"[{c}]{v['run_jobs']}[/{c}]",
+            "R-GPUs": f"[{c}]{v['run_gpus']:,}[/{c}]",
+            "GPU models": common.fmt_gpu_types(v["gpu_types"], limit=3),
+            "Longest job": f"[dim]{longest}[/dim]",
+            "Pending": str(v["pend_jobs"]) if v["pend_jobs"] else "[dim]—[/dim]",
+            "P-GPUs": f"{v['pend_gpus']:,}" if v["pend_gpus"] else "[dim]—[/dim]",
+            "Blocked by": reasons,
+        })
 
     hidden = len(ranked) - len(visible)
-    if hidden > 0:
-        t.add_row(f"[dim]+{hidden} more[/dim]", *(["[dim]…[/dim]"] * 7))
-
     total_run = sum(v["run_gpus"] for v in users.values())
     total_pend = sum(v["pend_gpus"] for v in users.values())
-    t.add_section()
     pct = 100 * total_run // gpu_capacity if gpu_capacity else 0
     color = gpu_color(pct)
-    t.add_row("[bold]TOTAL[/bold]",
-              f"[bold]{sum(v['run_jobs'] for v in users.values()):,}[/bold]",
-              f"[{color} bold]{total_run:,}[/{color} bold]", "", "",
-              f"{sum(v['pend_jobs'] for v in users.values()):,}",
-              f"{total_pend:,}", "")
+    totals = {
+        "User": "[bold]TOTAL[/bold]",
+        "Running": f"[bold]{sum(v['run_jobs'] for v in users.values()):,}[/bold]",
+        "R-GPUs": f"[{color} bold]{total_run:,}[/{color} bold]",
+        "Pending": f"{sum(v['pend_jobs'] for v in users.values()):,}",
+        "P-GPUs": f"{total_pend:,}",
+    }
+
+    # Keep the queue counts visible on small screens. Add details only when
+    # the complete table fits inside the panel.
+    specs = [
+        ("User", dict(min_width=8, max_width=18, overflow="ellipsis",
+                      no_wrap=True)),
+        ("Running", dict(justify="right", min_width=7)),
+        ("R-GPUs", dict(justify="right", min_width=6)),
+        ("GPU models", dict(style="dim", min_width=14, overflow="ellipsis",
+                            no_wrap=True)),
+        ("Longest job", dict(justify="right", min_width=11)),
+        ("Pending", dict(justify="right", min_width=7)),
+        ("P-GPUs", dict(justify="right", min_width=6)),
+        ("Blocked by", dict(style="dim", min_width=10, max_width=34,
+                            overflow="ellipsis", no_wrap=True)),
+    ]
+    core = {"User", "Running", "R-GPUs", "Pending", "P-GPUs"}
+
+    def build(extra, compact=False, blocked_width=34):
+        t = Table(box=None if compact else box.SIMPLE, show_header=True,
+                  header_style="bold dim", padding=(0, 0) if compact else (0, 1),
+                  pad_edge=not compact)
+        names = [n for n, kw in specs if n in core or n in extra]
+        for n, kw in specs:
+            if n in names:
+                if compact:
+                    compact_kw = dict(justify=kw.get("justify", "left"),
+                                      overflow="ellipsis", no_wrap=True)
+                    if n == "User":
+                        compact_kw["max_width"] = min(10, max(6, console.width - 34))
+                    elif n in ("GPU models", "Blocked by"):
+                        compact_kw["max_width"] = 16
+                    t.add_column((" " if n != "User" else "") + n,
+                                 **compact_kw)
+                else:
+                    if n == "Blocked by":
+                        kw = {**kw, "max_width": blocked_width}
+                    t.add_column(n, **kw)
+        for row in rows:
+            t.add_row(*(f" {row[n]}" if compact and n != "User" else row[n]
+                        for n in names))
+        if hidden > 0:
+            t.add_row(f"[dim]+{hidden} more[/dim]",
+                      *(["[dim]…[/dim]"] * (len(names) - 1)))
+        t.add_section()
+        t.add_row(*(f" {totals.get(n, '')}" if compact and n != "User"
+                    else totals.get(n, "") for n in names))
+        return t
+
+    budget = console.width - 4  # panel border + padding
+    core_width = console.measure(build(())).maximum
+    for extra in (("Blocked by", "GPU models", "Longest job"),
+                  ("Blocked by", "GPU models"), ("Blocked by",), ()):
+        for compact in (False, True):
+            if compact and "Longest job" in extra:
+                continue
+            # Let long reasons use spare room in the regular layout.
+            reserved = (16 if "GPU models" in extra else 0)
+            reserved += 13 if "Longest job" in extra else 0
+            blocked_width = min(34, max(10, budget - core_width - reserved - 2))
+            candidate = build(extra, compact=compact,
+                              blocked_width=blocked_width)
+            if console.measure(candidate).maximum <= budget:
+                t = candidate
+                break
+        else:
+            continue
+        break
+    else:
+        t = build((), compact=True)
+    t.expand = True
 
     if gpu_capacity:
-        subtitle = (f"{spark_bar(pct, 20)} [{color}]{total_run:,} / "
-                    f"{gpu_capacity:,} GPUs  ({pct}%)[/{color}]")
+        status = f"{total_run:,} / {gpu_capacity:,} GPUs  ({pct}%)"
+        bar_width = min(20, max(0, budget - len(status) - 4))
+        subtitle = (f"{spark_bar(pct, bar_width)} " if bar_width else "")
+        subtitle += f"[{color}]{status}[/{color}]"
     else:
         subtitle = f"[{color}]{total_run:,} GPUs running[/{color}]"
     return Panel(t, title=title, subtitle=subtitle, border_style="cyan",
@@ -334,14 +397,19 @@ def render_jobs(users, me, title, gpu_capacity, limit):
 
 
 def capacity(nodes, scope):
-    """Total GPUs reachable from the selected partitions, each node counted once.
+    """Schedulable GPUs reachable from the selected partitions, node counted once.
 
     Partitions overlap heavily here (sc-loprio alone spans the jagupard, miso
     and sphinx nodes), so dedupe by node name rather than by partition.
+
+    Drained/down nodes are excluded: a drained node's GPUs can never be handed
+    out, so folding them into the denominator makes the cluster look emptier
+    than it is (miso reads 24/40 = 60% while miso2 is drained, when the real
+    picture is 24/32 = 75%).
     """
     seen, total = set(), 0
     for n in nodes:
-        if n["partition"] not in scope or n["node"] in seen:
+        if n["partition"] not in scope or n["node"] in seen or not n["up"]:
             continue
         seen.add(n["node"])
         total += sum(n["gpu_total"].values())
