@@ -55,6 +55,8 @@ Host interact
     ProxyJump scdt
 ```
 
+*Here, we use the data transfer `scdt` node as a proxy, which makes life easier when you're not on Stanford Wifi*
+
 ### quick start
 
 ```sh
