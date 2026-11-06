@@ -38,9 +38,13 @@ alias code="code-fb" # can only use code-fb and cursor on fair-sc
 
 # https://code.claude.com/docs/en/changelog
 # CLAUDE_CODE_VERSION_OVERRIDE=2.1.234 
-alias claude="claude --dangerously-skip-permissions --effort high --model claude-opus-5"
+alias claude="claude --dangerously-skip-permissions --effort high --model claude-opus-5-5"
 alias cresume="claude --resume"
+alias cattach="claude attach"
 alias ct='tmux new-session "bash -ic claude"'
+
+# https://developers.openai.com/api/docs/guides/latest-model
+alias codex='codex --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort="high" -m gpt-6.1-sol'
 
 # disable new claude container env (the new one doesn't allow /fast mode)
 export LAUNCHER=0
@@ -126,6 +130,7 @@ alias nlpg="python3 $SLURM_TOOLS/summary.py --gpu-only"
 alias nlpw="watch -n 10 -c python3 $SLURM_TOOLS/summary.py --gpu-only"
 
 # per-pool views
+alias mm="python3 $SLURM_TOOLS/summary.py -p miso,miso-lo,miso-interactive"
 alias sjag="python3 $SLURM_TOOLS/summary.py -p jag-urgent,jag-important,jag-hi,jag-standard,jag-lo"
 alias smiso="python3 $SLURM_TOOLS/summary.py -p miso,miso-lo,miso-interactive"
 alias ssphinx="python3 $SLURM_TOOLS/summary.py -p sphinx,sphinx-lo"
@@ -135,6 +140,9 @@ alias slo="python3 $SLURM_TOOLS/summary.py -p sc-loprio,sc-freegpu,sc-freecpu"
 # priority queue
 alias sp="python3 $SLURM_TOOLS/priority.py"
 alias spa="python3 $SLURM_TOOLS/priority.py --all"
+
+# hide login banner
+[[ -f ~/.hushlogin ]] || touch ~/.hushlogin
 
 ##################################
 # slurm tooling (not ported yet) #
