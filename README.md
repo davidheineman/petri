@@ -28,6 +28,14 @@ sbatch --account=nlp --partition=sc-loprio --job-name="👋-dhei-interact-👋" 
 Then update local `~/.ssh/config` with hostnames (e.g. for `iliad1`):
 
 ```sh
+Host scdt
+    HostName scdt.stanford.edu
+    User dhei
+    IdentityFile ~/.ssh/id_rsa
+    IdentitiesOnly yes
+    AddKeysToAgent yes
+    UseKeychain yes
+
 Host sc
     HostName sc.stanford.edu
     User dhei
@@ -35,6 +43,7 @@ Host sc
     IdentitiesOnly yes
     AddKeysToAgent yes
     UseKeychain yes
+    ProxyJump scdt
 
 Host interact
     HostName iliad1.stanford.edu
@@ -43,6 +52,7 @@ Host interact
     IdentitiesOnly yes
     AddKeysToAgent yes
     UseKeychain yes
+    ProxyJump scdt
 ```
 
 ### quick start
